@@ -240,14 +240,11 @@ def _chk_row(parent, items: list[tuple[str, tk.BooleanVar]], pad_bottom: int = 4
     for text, var in items:
         ctk.CTkCheckBox(
             row, text=text, variable=var,
-            font=F_LBL_SM, text_color=T1, fg_color=SURFACE2,
-            checkbox_fg_color=SURFACE3,
-            checkbox_hover_color=SURFACE3,
+            font=F_LBL_SM, text_color=T1,
+            fg_color=ACCENT,
+            hover_color=ACCENT_D,
             border_color=DIVIDER,
             checkmark_color="#000000",
-            # Estado activo
-            button_color=ACCENT,
-            button_hover_color=ACCENT_D,
             width=18, height=18,
         ).pack(side="left", padx=(0, 16))
 
