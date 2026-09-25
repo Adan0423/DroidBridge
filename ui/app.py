@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Ventana principal de DroidBridge — dark mode puro, 100% responsivo."""
+"""Ventana principal de DroidBridge — responsivo adaptativo, dark/light mode."""
 from __future__ import annotations
 
 import os
@@ -13,36 +13,33 @@ from core.adb import AdbController
 from core.config import Config
 from core.model import Device
 from ui.dialogs import Toast, ask
-from ui.panels import (
-    build_header, build_hero, build_devlist,
-    build_actions, build_advanced, build_tools, build_log,
-)
-from ui.theme import BG, DIVIDER, ERR, OK, SURFACE2, SURFACE3, T2, T3, WARN
+from ui.panels import build_responsive, _rebuild
+import ui.theme as _theme_mod
+from ui.theme import T
 from ui.widgets import Pill
 
 
 class DroidBridge(ctk.CTk):
 
-    # ── INIT ─────────────────────────────────────────────────────────────────
+    # ── INIT ──────────────────────────────────────────────────────────────────
 
     def __init__(self) -> None:
-        # IMPORTANTE: no usar 'dark-blue' — sobreescribe los colores propios
         ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("green")   # neutro, no altera nuestros colores
+        ctk.set_default_color_theme("green")
         super().__init__()
 
         self.title("DroidBridge")
         self.geometry("390x620")
-        self.minsize(370, 540)
+        self.minsize(320, 480)
         self.resizable(True, True)
-        # Forzar fondo oscuro propio en la ventana raíz
-        self.configure(fg_color=BG)
+        self.configure(fg_color=T.BG)
 
         # Estado
-        self.cfg               = Config()
+        self.cfg                = Config()
         self.devices: list[Device] = []
-        self._sel              = ""
-        self.busy              = False
+        self._sel               = ""
+        self.busy               = False
+        self._log_buffer: list[str] = []
 
         d = self.cfg.data
         self.v_scrcpy  = tk.StringVar(value=d.get("scrcpy_path", ""))
@@ -56,73 +53,94 @@ class DroidBridge(ctk.CTk):
 
         self.ctrl = AdbController(log_fn=self._log, status_fn=self._set_pill)
 
+        # Referencias gestionadas por panels.py
+        self._resp_wrapper = None
+        self._resp_inner   = None
+        self._resp_cols    = 0
+        self._global_pill  = None
+        self._theme_btn    = None
+        self._hero         = {}
+        self._dlbody       = None
+        self._log_box      = None
+
         self._build_ui()
         self.after(150, self._init_env)
 
-    # ── BUILD UI ─────────────────────────────────────────────────────────────
+    # ── BUILD UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Canvas + Scrollbar propios: única forma de tener fill="x" 100% real
-        outer = tk.Frame(self, bg=BG)
-        outer.pack(fill="both", expand=True)
+        """Construye (o reconstruye) el sistema responsivo."""
+        self.configure(fg_color=T.BG)
+        build_responsive(self, self)
 
-        canvas = tk.Canvas(outer, bg=BG, highlightthickness=0, bd=0)
-        vsb = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
+    # ── TOGGLE TEMA ───────────────────────────────────────────────────────────
 
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+    def toggle_theme(self) -> None:
+        """Alterna dark/light, destruye y reconstruye toda la UI."""
+        T.switch()
+        ctk.set_appearance_mode(T.CTK_MODE)
 
-        # Frame de contenido dentro del canvas
-        content = ctk.CTkFrame(canvas, fg_color=BG)
-        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+        # Destruir el wrapper anterior
+        if self._resp_wrapper is not None:
+            self._resp_wrapper.destroy()
+            self._resp_wrapper = None
+            self._resp_inner   = None
+            self._resp_cols    = 0
 
-        # Ajustar el ancho del frame interno al canvas — ESTO ES LO QUE FALTABA
-        def _on_canvas_resize(event):
-            canvas.itemconfig(content_id, width=event.width)
+        # Limpiar referencias antes de reconstruir
+        self._global_pill = None
+        self._theme_btn   = None
+        self._hero        = {}
+        self._dlbody      = None
+        self._log_box     = None
 
-        def _on_content_resize(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
+        # Reconstruir — build_responsive es síncrono: al retornar,
+        # _dlbody, _hero y _log_box ya existen con los nuevos colores
+        self._build_ui()
 
-        canvas.bind("<Configure>", _on_canvas_resize)
-        content.bind("<Configure>", _on_content_resize)
+        # Restaurar estado con after(0) para asegurarse de que Tk
+        # terminó de procesar el nuevo árbol de widgets
+        def _restore():
+            self._refresh_devlist()
+            if self._log_buffer and self._log_box:
+                self._log_box.configure(state="normal")
+                for line in self._log_buffer:
+                    self._log_box.insert("end", line + "\n")
+                self._log_box.see("end")
+                self._log_box.configure(state="disabled")
 
-        # Scroll con rueda del ratón
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
-        # Construir paneles en el frame de contenido
-        self._global_pill = build_header(self, content)
-        self._hero        = build_hero(self, content)
-        self._dlbody      = build_devlist(self, content)
-        build_actions(self, content)
-        build_advanced(self, content)
-        build_tools(self, content)
-        self._log_box     = build_log(self, content)
+        self.after(0, _restore)
 
     # ── LOG ───────────────────────────────────────────────────────────────────
 
     def _log(self, msg: str) -> None:
+        clean = msg.rstrip()
+        self._log_buffer.append(clean)
+        if len(self._log_buffer) > 300:
+            self._log_buffer = self._log_buffer[-300:]
+
         def _w():
+            if self._log_box is None:
+                return
             self._log_box.configure(state="normal")
-            self._log_box.insert("end", msg.rstrip() + "\n")
+            self._log_box.insert("end", clean + "\n")
             self._log_box.see("end")
             self._log_box.configure(state="disabled")
         self.after(0, _w)
 
     def _set_pill(self, text: str) -> None:
         def _upd():
+            if self._global_pill is None:
+                return
             tl = text.lower()
-            if any(x in tl for x in ("✓", "listo", "conectad", "emparejad")):
+            if any(x in tl for x in ("\u2713", "listo", "conectad", "emparejad")):
                 self._global_pill.set_ok(text)
             elif any(x in tl for x in ("autorizar", "offline", "reparand")):
                 self._global_pill.set_warn(text)
             elif any(x in tl for x in ("error", "no hay", "falta", "fallid")):
                 self._global_pill.set_err(text)
             else:
-                self._global_pill.set(text, T2, SURFACE3)
+                self._global_pill.set(text, T.T2, T.SURFACE3)
         self.after(0, _upd)
 
     def _toast(self, msg: str, kind: str = "ok") -> None:
@@ -132,7 +150,7 @@ class DroidBridge(ctk.CTk):
 
     def _run_bg(self, fn) -> None:
         if self.busy:
-            self._log("Operación en curso, espera…")
+            self._log("Operacion en curso, espera...")
             return
         self.busy = True
 
@@ -149,13 +167,16 @@ class DroidBridge(ctk.CTk):
     # ── LISTA DE DISPOSITIVOS ─────────────────────────────────────────────────
 
     def _refresh_devlist(self) -> None:
+        if self._dlbody is None:
+            return
         for w in self._dlbody.winfo_children():
             w.destroy()
 
         if not self.devices:
             ctk.CTkLabel(
-                self._dlbody, text="Sin dispositivos · pulsa Escanear",
-                font=("Segoe UI", 8), text_color=T3, fg_color=SURFACE2,
+                self._dlbody,
+                text="Sin dispositivos \u00b7 pulsa Escanear",
+                font=("Segoe UI", 8), text_color=T.T3, fg_color=T.SURFACE2,
             ).pack(pady=6)
             self._refresh_hero(None)
             return
@@ -170,40 +191,36 @@ class DroidBridge(ctk.CTk):
 
     def _dev_row(self, dev: Device) -> None:
         is_sel = dev.serial == self._sel
-        bg = SURFACE3 if is_sel else SURFACE2
+        bg = T.SURFACE3 if is_sel else T.SURFACE2
 
-        row = ctk.CTkFrame(
-            self._dlbody, fg_color=bg, corner_radius=10, cursor="hand2",
-        )
+        row = ctk.CTkFrame(self._dlbody, fg_color=bg, corner_radius=10, cursor="hand2")
         row.pack(fill="x", pady=(0, 3))
 
-        # Barra lateral de estado
         bar = ctk.CTkFrame(row, fg_color=dev.state_color, width=3, corner_radius=2)
         bar.pack(side="left", fill="y", padx=(6, 0), pady=6)
         bar.pack_propagate(False)
 
-        # Info central — se expande
         info = ctk.CTkFrame(row, fg_color=bg)
         info.pack(side="left", fill="both", expand=True, padx=(8, 6), pady=6)
         ctk.CTkLabel(info, text=dev.display_name,
-                     font=("Segoe UI", 9), text_color=T1,
+                     font=("Segoe UI", 9), text_color=T.T1,
                      fg_color=bg, anchor="w").pack(fill="x")
         ctk.CTkLabel(info, text=dev.serial,
-                     font=("Consolas", 8), text_color=T3,
+                     font=("Consolas", 8), text_color=T.T3,
                      fg_color=bg, anchor="w").pack(fill="x")
 
-        # Estado + tipo — derecha
         right = ctk.CTkFrame(row, fg_color=bg)
         right.pack(side="right", padx=(0, 8), pady=6)
         Pill(right, text=dev.state_label,
              fg=dev.state_color, bg=dev.state_bg).pack(pady=(0, 2))
         ctk.CTkLabel(right, text=f"{dev.kind_icon} {dev.kind}",
-                     font=("Segoe UI", 8), text_color=T3,
+                     font=("Segoe UI", 8), text_color=T.T3,
                      fg_color=bg).pack()
 
         for w in (row, info, bar):
             w.bind("<Button-1>", lambda _e, s=dev.serial: self._select(s))
-            w.bind("<Double-1>", lambda _e, s=dev.serial: (self._select(s), self.start_scrcpy()))
+            w.bind("<Double-1>",
+                   lambda _e, s=dev.serial: (self._select(s), self.start_scrcpy()))
 
     def _select(self, serial: str) -> None:
         self._sel = serial
@@ -214,28 +231,31 @@ class DroidBridge(ctk.CTk):
 
     def _refresh_hero(self, dev: Device | None) -> None:
         h = self._hero
+        if not h:
+            return
         if dev is None:
-            h["band"].configure(fg_color=SURFACE3)
-            h["name"].configure(text="—")
-            h["serial"].configure(text="—")
+            h["band"].configure(fg_color=T.SURFACE3)
+            h["name"].configure(text="\u2014")
+            h["serial"].configure(text="\u2014")
             h["pill"].set_neutral("Sin detectar")
-            h["kind"].set_neutral("—")
+            h["kind"].set_neutral("\u2014")
             h["msg"].configure(
-                text="Conecta un dispositivo USB o configura Wi-Fi.", text_color=T2,
+                text="Conecta un dispositivo USB o configura Wi-Fi.",
+                text_color=T.T2,
             )
             return
 
         msgs = {
-            "device":       ("Dispositivo listo · pulsa Iniciar.", OK),
-            "unauthorized": ("Desbloquea y acepta la depuración USB.", WARN),
-            "offline":      ("Offline — usa Reparar ADB.", ERR),
+            "device":       ("Dispositivo listo \u00b7 pulsa Iniciar.", T.OK),
+            "unauthorized": ("Desbloquea y acepta la depuracion USB.", T.WARN),
+            "offline":      ("Offline \u2014 usa Reparar ADB.", T.ERR),
         }
-        text, color = msgs.get(dev.state, (f"Estado: {dev.state}. Usa Reparar ADB.", T2))
+        text, color = msgs.get(dev.state, (f"Estado: {dev.state}. Usa Reparar ADB.", T.T2))
         h["band"].configure(fg_color=dev.state_color)
         h["name"].configure(text=dev.display_name)
         h["serial"].configure(text=dev.serial)
         h["pill"].set(dev.state_label, dev.state_color, dev.state_bg)
-        h["kind"].set(f"{dev.kind_icon}  {dev.kind}", T2, SURFACE3)
+        h["kind"].set(f"{dev.kind_icon}  {dev.kind}", T.T2, T.SURFACE3)
         h["msg"].configure(text=text, text_color=color)
 
     # ── PICKERS ───────────────────────────────────────────────────────────────
@@ -256,7 +276,7 @@ class DroidBridge(ctk.CTk):
         if v:
             self.v_adb.set(v)
 
-    # ── INICIALIZACIÓN ────────────────────────────────────────────────────────
+    # ── INICIALIZACION ────────────────────────────────────────────────────────
 
     def _init_env(self) -> None:
         def _w():
@@ -279,7 +299,7 @@ class DroidBridge(ctk.CTk):
                 self._set_pill("Falta adb.exe")
         self._run_bg(_w)
 
-    # ── ACCIONES ─────────────────────────────────────────────────────────────
+    # ── ACCIONES ──────────────────────────────────────────────────────────────
 
     def scan_devices(self) -> None:
         self._run_bg(lambda: self._scan_worker(self.v_adb.get().strip()))
@@ -287,7 +307,7 @@ class DroidBridge(ctk.CTk):
     def _scan_worker(self, adb: str) -> None:
         if not adb or not os.path.isfile(adb):
             self._set_pill("Configura adb.exe")
-            self._log("Ruta de adb.exe no válida — abre «Rutas de herramientas».")
+            self._log("Ruta de adb.exe no valida — abre Rutas de herramientas.")
             return
         self.devices = self.ctrl.scan(adb)
         self.after(0, self._refresh_devlist)
@@ -297,11 +317,11 @@ class DroidBridge(ctk.CTk):
         offline = [d for d in self.devices if d.state == "offline"]
 
         if usable:
-            self._set_pill(f"{len(usable)} listo(s) ✓")
+            self._set_pill(f"{len(usable)} listo(s) \u2713")
             self._log(f"ADB OK — {len(usable)} dispositivo(s) utilizable(s).")
         elif unauth:
             self._set_pill("Sin autorizar")
-            self._log("Unauthorized — desbloquea y acepta la depuración USB.")
+            self._log("Unauthorized — desbloquea y acepta la depuracion USB.")
         elif offline:
             self._set_pill("Offline")
             self._log("Offline — usa Reparar ADB.")
@@ -317,7 +337,7 @@ class DroidBridge(ctk.CTk):
         ep = ask(self, "DroidBridge", "Endpoint de emparejamiento (IP:PUERTO):")
         if not ep:
             return
-        code = ask(self, "DroidBridge", "Código de emparejamiento:", password=True)
+        code = ask(self, "DroidBridge", "Codigo de emparejamiento:", password=True)
         if not code:
             return
         adb = self.v_adb.get().strip()
@@ -330,11 +350,13 @@ class DroidBridge(ctk.CTk):
         self._run_bg(_w)
 
     def connect_wifi(self) -> None:
-        ep = ask(self, "DroidBridge", "Endpoint de conexión ADB (IP:PUERTO):")
+        ep = ask(self, "DroidBridge", "Endpoint de conexion ADB (IP:PUERTO):")
         if not ep:
             return
         adb = self.v_adb.get().strip()
-        self._run_bg(lambda: self.ctrl.connect_wifi(adb, ep.strip()) and self._scan_worker(adb))
+        self._run_bg(
+            lambda: self.ctrl.connect_wifi(adb, ep.strip()) and self._scan_worker(adb)
+        )
 
     def start_scrcpy(self) -> None:
         try:
@@ -357,10 +379,10 @@ class DroidBridge(ctk.CTk):
                     return
 
             if dev.state == "unauthorized":
-                self._toast("Sin autorizar.\nDesbloquea y acepta la depuración USB.", "warn")
+                self._toast("Sin autorizar.\nDesbloquea y acepta la depuracion USB.", "warn")
                 return
             if dev.state != "device":
-                self._toast(f"Estado «{dev.state}».\nUsa Reparar ADB.", "warn")
+                self._toast(f"Estado \u00ab{dev.state}\u00bb.\nUsa Reparar ADB.", "warn")
                 return
 
             self.save_config(silent=True)
@@ -373,7 +395,7 @@ class DroidBridge(ctk.CTk):
                 max_size=self.v_size.get().strip(),
                 max_fps=self.v_fps.get().strip(),
             )
-            self._set_pill("scrcpy iniciado ✓")
+            self._set_pill("scrcpy iniciado \u2713")
 
         except Exception as exc:
             self._toast(str(exc), "err")
@@ -392,7 +414,7 @@ class DroidBridge(ctk.CTk):
         try:
             self.cfg.save()
             if not silent:
-                self._toast("Configuración guardada.", "ok")
+                self._toast("Configuracion guardada.", "ok")
         except Exception as exc:
             if not silent:
                 self._toast(f"Error al guardar:\n{exc}", "err")

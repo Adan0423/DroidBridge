@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Widgets reutilizables para DroidBridge — dark mode puro."""
+"""Widgets reutilizables para DroidBridge. Todos los colores se leen de T en
+tiempo de construcción para que dark/light mode funcione completamente."""
 from __future__ import annotations
 
 import customtkinter as ctk
 
-from ui.theme import (
-    ACCENT, ACCENT_BG, ACCENT_D, BG, BTN2, BTN2_BD, BTN2_H,
-    DIVIDER, ERR, ERR_BG, OK, OK_BG,
-    SURFACE2, SURFACE3, T1, T2, T3, WARN, WARN_BG,
-    F_BTN, F_BTN_P, F_BTN_SM, F_CHIP, F_SEC,
-)
+from ui.theme import T, F_BTN, F_BTN_P, F_BTN_SM, F_CHIP, F_SEC
 
 
 # ── Pill / Badge ──────────────────────────────────────────────────────────────
 
 class Pill(ctk.CTkLabel):
-    def __init__(self, master, text: str = "", fg: str = T3, bg: str = SURFACE3, **kw):
+    def __init__(self, master, text: str = "", fg: str | None = None,
+                 bg: str | None = None, **kw):
         super().__init__(
             master, text=text, font=F_CHIP,
-            text_color=fg, fg_color=bg,
+            text_color=fg if fg is not None else T.T3,
+            fg_color=bg if bg is not None else T.SURFACE3,
             corner_radius=100, padx=8, pady=2, **kw,
         )
 
@@ -26,30 +24,30 @@ class Pill(ctk.CTkLabel):
         self.configure(text=text, text_color=fg, fg_color=bg)
 
     def set_ok(self, text: str = "Listo") -> None:
-        self.set(text, OK, OK_BG)
+        self.set(text, T.OK, T.OK_BG)
 
     def set_warn(self, text: str) -> None:
-        self.set(text, WARN, WARN_BG)
+        self.set(text, T.WARN, T.WARN_BG)
 
     def set_err(self, text: str) -> None:
-        self.set(text, ERR, ERR_BG)
+        self.set(text, T.ERR, T.ERR_BG)
 
     def set_neutral(self, text: str) -> None:
-        self.set(text, T3, SURFACE3)
+        self.set(text, T.T3, T.SURFACE3)
 
 
 # ── Contenedores ──────────────────────────────────────────────────────────────
 
 class Card(ctk.CTkFrame):
-    """Tarjeta oscura con esquinas redondeadas."""
+    """Tarjeta con esquinas redondeadas, color de superficie del tema actual."""
     def __init__(self, master, radius: int = 16, **kw):
-        super().__init__(master, fg_color=SURFACE2, corner_radius=radius, **kw)
+        super().__init__(master, fg_color=T.SURFACE2, corner_radius=radius, **kw)
 
 
 class Divider(ctk.CTkFrame):
     """Línea divisoria 1 px."""
     def __init__(self, master, **kw):
-        super().__init__(master, fg_color=DIVIDER, height=1, **kw)
+        super().__init__(master, fg_color=T.DIVIDER, height=1, **kw)
 
 
 class SectionLabel(ctk.CTkLabel):
@@ -57,21 +55,21 @@ class SectionLabel(ctk.CTkLabel):
     def __init__(self, master, text: str, **kw):
         super().__init__(
             master, text=text.upper(), font=F_SEC,
-            text_color=T3, anchor="w", **kw,
+            text_color=T.T3, anchor="w", **kw,
         )
 
 
 # ── Botones ───────────────────────────────────────────────────────────────────
 
 class PrimaryButton(ctk.CTkButton):
-    """CTA principal: teal sólido, texto negro."""
+    """CTA principal: acento sólido, texto negro."""
     def __init__(self, master, text: str, icon: str = "", command=None, **kw):
         super().__init__(
             master,
             text=f"{icon}  {text}" if icon else text,
             font=F_BTN_P,
-            fg_color=ACCENT,
-            hover_color=ACCENT_D,
+            fg_color=T.ACCENT,
+            hover_color=T.ACCENT_D,
             text_color="#000000",
             corner_radius=14,
             height=46,
@@ -81,19 +79,19 @@ class PrimaryButton(ctk.CTkButton):
 
 
 class SecondaryButton(ctk.CTkButton):
-    """Botón secundario oscuro con borde sutil."""
+    """Botón secundario con borde sutil — colores del tema actual."""
     def __init__(self, master, text: str, command=None, **kw):
         super().__init__(
             master,
             text=text,
             font=F_BTN,
-            fg_color=BTN2,
-            hover_color=BTN2_H,
-            text_color=T1,
+            fg_color=T.BTN2,
+            hover_color=T.BTN2_H,
+            text_color=T.T1,
             corner_radius=12,
             height=36,
             border_width=1,
-            border_color=BTN2_BD,
+            border_color=T.BTN2_BD,
             command=command,
             **kw,
         )
@@ -107,8 +105,8 @@ class GhostButton(ctk.CTkButton):
             text=text,
             font=F_BTN_SM,
             fg_color="transparent",
-            hover_color=SURFACE3,
-            text_color=T2,
+            hover_color=T.SURFACE3,
+            text_color=T.T2,
             corner_radius=6,
             height=22,
             command=command,
@@ -122,17 +120,20 @@ class Collapsible(ctk.CTkFrame):
     """Bloque colapsable con header clickeable."""
 
     def __init__(self, master, label: str, **kw):
-        super().__init__(master, fg_color=SURFACE2, corner_radius=16, **kw)
+        super().__init__(master, fg_color=T.SURFACE2, corner_radius=16, **kw)
         self._open = False
 
-        hdr = ctk.CTkFrame(self, fg_color=SURFACE2, cursor="hand2")
+        hdr = ctk.CTkFrame(self, fg_color=T.SURFACE2, cursor="hand2")
         hdr.pack(fill="x", padx=14, pady=(11, 11))
 
-        self._arrow = ctk.CTkLabel(hdr, text="▸", font=("Segoe UI", 9), text_color=T3, fg_color=SURFACE2)
+        self._arrow = ctk.CTkLabel(
+            hdr, text="▸", font=("Segoe UI", 9),
+            text_color=T.T3, fg_color=T.SURFACE2,
+        )
         self._arrow.pack(side="left", padx=(0, 6))
         SectionLabel(hdr, label).pack(side="left")
 
-        self.body = ctk.CTkFrame(self, fg_color=SURFACE2)
+        self.body = ctk.CTkFrame(self, fg_color=T.SURFACE2)
 
         hdr.bind("<Button-1>", lambda _e: self._toggle())
         self._arrow.bind("<Button-1>", lambda _e: self._toggle())

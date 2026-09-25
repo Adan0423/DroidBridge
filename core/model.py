@@ -4,7 +4,18 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from ui.theme import OK, OK_BG, WARN, WARN_BG, ERR, ERR_BG, T2, T3, SURFACE3
+from ui.theme import T as _T
+
+
+def _ok():       return _T.OK
+def _ok_bg():    return _T.OK_BG
+def _warn():     return _T.WARN
+def _warn_bg():  return _T.WARN_BG
+def _err():      return _T.ERR
+def _err_bg():   return _T.ERR_BG
+def _t2():       return _T.T2
+def _t3():       return _T.T3
+def _surf3():    return _T.SURFACE3
 
 
 def decode_output(data: bytes) -> str:
@@ -44,11 +55,11 @@ class Device:
 
     @property
     def state_color(self) -> str:
-        return {"device": OK, "unauthorized": WARN, "offline": ERR}.get(self.state, T2)
+        return {"device": _ok(), "unauthorized": _warn(), "offline": _err()}.get(self.state, _t2())
 
     @property
     def state_bg(self) -> str:
-        return {"device": OK_BG, "unauthorized": WARN_BG, "offline": ERR_BG}.get(self.state, SURFACE3)
+        return {"device": _ok_bg(), "unauthorized": _warn_bg(), "offline": _err_bg()}.get(self.state, _surf3())
 
     @property
     def state_label(self) -> str:

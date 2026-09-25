@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Diálogos modales estilizados para DroidBridge."""
+"""Diálogos modales estilizados para DroidBridge.
+Todos los colores leen T en tiempo de construcción."""
 from __future__ import annotations
 
 import customtkinter as ctk
 
-from ui.theme import (
-    ACCENT, ACCENT_D, BG, BTN2_H, DIVIDER, ERR, ERR_BG,
-    OK_BG, SURFACE2, SURFACE3, T1, T2, T3, WARN, WARN_BG,
-    F_BTN, F_BTN_P, F_BTN_SM, F_LBL,
-)
+from ui.theme import T, F_BTN, F_BTN_P, F_BTN_SM, F_LBL
 from ui.widgets import GhostButton, PrimaryButton
 
 
@@ -23,17 +20,17 @@ class InputDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         self.grab_set()
         self.lift()
-        self.configure(fg_color=SURFACE2)
+        self.configure(fg_color=T.SURFACE2)
         self.result: str | None = None
 
         ctk.CTkLabel(
-            self, text=prompt, font=F_LBL, text_color=T1,
+            self, text=prompt, font=F_LBL, text_color=T.T1,
             wraplength=290, justify="left",
         ).pack(padx=22, pady=(20, 8))
 
         self._entry = ctk.CTkEntry(
             self, width=290, font=F_LBL,
-            fg_color=SURFACE3, border_color=DIVIDER, text_color=T1,
+            fg_color=T.SURFACE3, border_color=T.DIVIDER, text_color=T.T1,
             corner_radius=10, height=34,
             show="*" if password else "",
         )
@@ -71,12 +68,6 @@ def ask(parent, title: str, prompt: str, password: bool = False) -> str | None:
 class Toast(ctk.CTkToplevel):
     """Notificación modal compacta sin bordes de sistema."""
 
-    _CONF = {
-        "ok":   (ACCENT, OK_BG),
-        "warn": (WARN,   WARN_BG),
-        "err":  (ERR,    ERR_BG),
-    }
-
     def __init__(self, parent, message: str, kind: str = "ok"):
         super().__init__(parent)
         self.title("")
@@ -84,18 +75,24 @@ class Toast(ctk.CTkToplevel):
         self.grab_set()
         self.lift()
         self.overrideredirect(True)
-        self.configure(fg_color=SURFACE2)
+        self.configure(fg_color=T.SURFACE2)
 
-        color, bg = self._CONF.get(kind, self._CONF["ok"])
+        # Colores según el tipo — leídos de T en tiempo de construcción
+        _conf = {
+            "ok":   (T.ACCENT, T.OK_BG),
+            "warn": (T.WARN,   T.WARN_BG),
+            "err":  (T.ERR,    T.ERR_BG),
+        }
+        color, band_bg = _conf.get(kind, _conf["ok"])
 
         outer = ctk.CTkFrame(
-            self, fg_color=SURFACE2, corner_radius=16,
-            border_width=1, border_color=DIVIDER,
+            self, fg_color=T.SURFACE2, corner_radius=16,
+            border_width=1, border_color=T.DIVIDER,
         )
         outer.pack()
 
         # Banda de color superior
-        ctk.CTkFrame(outer, fg_color=bg, height=3, corner_radius=0).pack(fill="x")
+        ctk.CTkFrame(outer, fg_color=band_bg, height=3, corner_radius=0).pack(fill="x")
 
         body = ctk.CTkFrame(outer, fg_color="transparent")
         body.pack(padx=18, pady=(12, 6))
@@ -106,14 +103,14 @@ class Toast(ctk.CTkToplevel):
             font=("Segoe UI", 18), text_color=color,
         ).pack(side="left", padx=(0, 10))
         ctk.CTkLabel(
-            body, text=message, font=F_LBL, text_color=T1,
+            body, text=message, font=F_LBL, text_color=T.T1,
             wraplength=230, justify="left",
         ).pack(side="left", anchor="w")
 
         ctk.CTkButton(
             outer, text="Cerrar", height=28, corner_radius=8,
-            font=F_BTN_SM, fg_color=SURFACE3, hover_color=BTN2_H,
-            text_color=T2, command=self.destroy,
+            font=F_BTN_SM, fg_color=T.SURFACE3, hover_color=T.BTN2_H,
+            text_color=T.T2, command=self.destroy,
         ).pack(padx=18, pady=(4, 14), fill="x")
 
         self.update_idletasks()
