@@ -62,26 +62,45 @@ class DroidBridge(ctk.CTk):
     # ── BUILD UI ─────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Scrollable raíz — color forzado a BG, no al tema de CTk
-        scroll = ctk.CTkScrollableFrame(
-            self,
-            fg_color=BG,
-            bg_color=BG,
-            scrollbar_button_color=SURFACE3,
-            scrollbar_button_hover_color=DIVIDER,
-        )
-        scroll.pack(fill="both", expand=True, padx=0, pady=0)
-        # El frame interno del scrollable también debe ser oscuro
-        scroll._parent_canvas.configure(bg=BG)
-        scroll._scrollbar.configure(fg_color=BG)
+        # Canvas + Scrollbar propios: única forma de tener fill="x" 100% real
+        outer = tk.Frame(self, bg=BG)
+        outer.pack(fill="both", expand=True)
 
-        self._global_pill = build_header(self, scroll)
-        self._hero        = build_hero(self, scroll)
-        self._dlbody      = build_devlist(self, scroll)
-        build_actions(self, scroll)
-        build_advanced(self, scroll)
-        build_tools(self, scroll)
-        self._log_box     = build_log(self, scroll)
+        canvas = tk.Canvas(outer, bg=BG, highlightthickness=0, bd=0)
+        vsb = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Frame de contenido dentro del canvas
+        content = ctk.CTkFrame(canvas, fg_color=BG)
+        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        # Ajustar el ancho del frame interno al canvas — ESTO ES LO QUE FALTABA
+        def _on_canvas_resize(event):
+            canvas.itemconfig(content_id, width=event.width)
+
+        def _on_content_resize(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _on_canvas_resize)
+        content.bind("<Configure>", _on_content_resize)
+
+        # Scroll con rueda del ratón
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # Construir paneles en el frame de contenido
+        self._global_pill = build_header(self, content)
+        self._hero        = build_hero(self, content)
+        self._dlbody      = build_devlist(self, content)
+        build_actions(self, content)
+        build_advanced(self, content)
+        build_tools(self, content)
+        self._log_box     = build_log(self, content)
 
     # ── LOG ───────────────────────────────────────────────────────────────────
 
