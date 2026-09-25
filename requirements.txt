@@ -1,0 +1,4 @@
+# Dependencias de DroidBridge
+# Instalar con: pip install -r requirements.txt
+
+customtkinter==5.2.2

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Binarios y compilados
+*.spec
+dist/
+*.exe
+
+# Configuración local del usuario (generada en LOCALAPPDATA)
+config.json
+
+# Logs
+*.log
